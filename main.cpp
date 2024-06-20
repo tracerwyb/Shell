@@ -8,15 +8,17 @@
 #include <unistd.h>
 #include <vector>
 std::vector<std::vector<std::string>> argslist;
+std::string currentPath{"/"};
+
 //include nusername ,currentfile,hostname,a prompt compose total prompt
 void prompt()
 {
     std::string username = getenv("USER");
-    std::filesystem::path current_path = std::filesystem::current_path();
     struct utsname uts;
     uname(&uts);
     std::string hostname(uts.nodename);
-    std::string prompt{"[" + username + " " + hostname + current_path.string() + "]<"};
+    std::string prompt{"[" + username + " " + hostname + "~" + currentPath + "]<"};
+    // std::string prompt{"[" + username + " " + hostname + "]<"};
     std::cout << prompt;
 }
 
@@ -32,7 +34,6 @@ void parse()
     if (pos > 0) {
         cmdline.erase(0, pos);
     }
-
     int i = 0;
     std::string tmp;
     std::vector<std::string> args;
@@ -66,6 +67,32 @@ void parse()
         argslist.push_back(args);
     }
 }
+//cd
+void changeCurrentPath(std::vector<std::string> &args)
+{
+    // 上一个文件目录
+    if (args[1] == "../") {
+        size_t pos = currentPath.rfind('/');
+        if (pos != std::string::npos) {
+            currentPath.erase(pos + 1);
+        }
+    } else if (args[1] == "./") {
+        ;
+    } else {
+        // 判断系统里是否存在这个目录
+        if (currentPath.back() == '/') {
+            if (!args[1].empty() && args[1][0] == '/') {
+                args[1] = args[1].substr(1); // 返回从索引1（即第二个字符）开始的子字符串
+            }
+        }
+        std::string fullPath = currentPath + args[1];
+        if (std::filesystem::exists(fullPath) && std::filesystem::is_directory(fullPath)) {
+            currentPath = fullPath;
+        } else {
+            std::cerr << "该目录不存在: " << fullPath << std::endl;
+        }
+    }
+}
 void execute(std::vector<std::string> &args)
 {
     char *arr[10];
@@ -77,22 +104,32 @@ void execute(std::vector<std::string> &args)
         exit(1);
     } else if (pid == 0) {
         //child process
+        if (args.size() == 1) {
+            args.push_back(currentPath);
+        }
         for (int i = 0; i < args.size(); i++) {
             arr[i] = (char *) args[i].c_str();
-            arr[args.size()] = NULL;
-            execvp(arr[0], arr);
         }
-    } else {
+        arr[args.size()] = NULL;
+        execvp(arr[0], arr);
+    }
+    //parent process
+    else {
         wait(NULL);
     }
 }
+
 void shell()
 {
     while (true) {
         prompt();
         parse();
-        for (int i = 0; i < argslist.size(); i++) {
-            execute(argslist[i]);
+        for (auto &args : argslist) {
+            if (args.size() > 0 && args[0] == "cd") {
+                changeCurrentPath(args);
+            } else {
+                execute(args);
+            }
         }
         argslist.clear();
     }
