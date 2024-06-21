@@ -4,6 +4,7 @@ project(test1 LANGUAGES CXX)
 
 add_executable(test1
     main.cpp
+    shell.h shell.cpp
 )
 
 target_compile_features( test1 PRIVATE cxx_std_20 )
