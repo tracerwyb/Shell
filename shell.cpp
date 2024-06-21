@@ -1,13 +1,19 @@
 #include "shell.h"
 #include <cstdlib>
+#include <fcntl.h> // 引入open, O_RDONLY等
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <string>
 #include <sys/utsname.h>
 #include <sys/wait.h>
 #include <unistd.h>
-Shell::Shell() {}
+#include <vector>
+Shell::Shell()
+{
+    shell();
+}
 
 void Shell::prompt()
 {
@@ -15,7 +21,7 @@ void Shell::prompt()
     struct utsname uts;
     uname(&uts);
     std::string hostname(uts.nodename);
-    std::string prompt{"[" + username + " " + hostname + "~" + currentPath + "]<"};
+    std::string prompt{"[" + username + " " + hostname + "~" + currentPath + "]~"};
     // std::string prompt{"[" + username + " " + hostname + "]<"};
     std::cout << prompt;
 }
@@ -32,12 +38,13 @@ void Shell::parse()
     if (pos > 0) {
         cmdline.erase(0, pos);
     }
+    // std::cout << cmdline << std::endl;
     int i = 0;
     std::string tmp;
     std::vector<std::string> args;
-    std::string filename;
-    std::string lable;
+    std::string filename{};
     while (i < cmdline.size()) {
+        // std::cout << "start" << cmdline[i] << std::endl;
         if (cmdline[i] == '|' || cmdline[i] == ';') {
             if (!tmp.empty()) { // 如果tmp不为空，则添加它到参数列表中
                 args.push_back(tmp);
@@ -57,17 +64,35 @@ void Shell::parse()
                 args.push_back(tmp);
                 tmp.clear();
             }
-            //输入输出的重定向和管道
-        } else if (cmdline[i] == '<' || (cmdline[i] == '<' && cmdline[i + 1] == '<')) {
-            args.push_back(tmp);
-            size_t pos_io = i;
-            size_t pos_io_afterspace = pos_io + 1;
-            while (pos_io_afterspace < cmdline.size() && cmdline[pos_io_afterspace] == ' ') {
-                ++pos_io_afterspace;
+            if (!filename.empty()) {
+                args.push_back(filename);
+                args.push_back("f");
+                filename.clear();
             }
-            size_t pos_nextspace = cmdline.find(' ', pos_io_afterspace);
-            filename = cmdline.substr(pos_io_afterspace, pos_nextspace - pos_io_afterspace);
-            i = pos_nextspace;
+            //输入输出的重定向和管道
+        } else if (cmdline[i] == '>') {
+            i++;
+            if (cmdline[i] == '>') {
+                i++;
+            } else if (cmdline[i + 1] == '>') {
+                std::cerr << "some error occur in <<";
+                exit(0);
+            }
+            //重定向符号后内容
+            int flag = 0;
+            while (i < cmdline.size()) {
+                if (cmdline[i] == ' ' && flag == 0) {
+                    i++;
+                } else if (cmdline[i] == ' ' && flag == 1) {
+                    break;
+                } else {
+                    flag = 1;
+                    filename = filename + cmdline[i];
+                    i++;
+                }
+            }
+            flag = 0;
+            i--;
         } else {
             tmp = tmp + cmdline[i];
         }
@@ -78,9 +103,18 @@ void Shell::parse()
     if (!tmp.empty()) {
         args.push_back(tmp);
     }
+    if (!filename.empty()) {
+        args.push_back(filename);
+        args.push_back("f");
+    }
     // 最后一个参数列表不为空，则添加到argslist中
     if (!args.empty()) {
         argslist.push_back(args);
+    }
+    for (auto &arg : argslist) {
+        // for (auto &a : arg) {
+        //     std::cout << ":" << a;
+        // }
     }
 }
 
@@ -142,22 +176,16 @@ void Shell::execute(std::vector<std::string> &args)
 
 void Shell::executeWithIO(std::vector<std::string> &args)
 {
+    // std::cout << "chongdingxiang" << std::endl;
     char *arr[10];
-    std::string filename;
+    std::string filename = args[args.size() - 2] + ".txt";
     if (args.size() >= 2) {
         args.pop_back();
         if (!args.empty()) {
-            filename{args.pop_back()};
+            args.pop_back();
         }
     }
-    int fp;
-    close(0);
-    filename = currentPath + filename;
-    std::fstream fp(filename, std::ios::in);
-    if (fp != 0) {
-        fprintf(stderr, "Could not open sata as fd 0\n");
-        exit(1);
-    }
+
     pid_t pid;
     //create child process
     pid = fork();
@@ -166,6 +194,14 @@ void Shell::executeWithIO(std::vector<std::string> &args)
         exit(1);
     } else if (pid == 0) {
         //child process
+        int fd;
+        close(1);
+        filename = currentPath + filename;
+        fd = open(filename.c_str(), O_RDWR | O_CREAT, 0644);
+        if (fd != 1) {
+            fprintf(stderr, "Could not open sata as fd 1\n");
+            exit(1);
+        }
         if (args.size() == 1) {
             args.push_back(currentPath);
         }
@@ -174,23 +210,28 @@ void Shell::executeWithIO(std::vector<std::string> &args)
         }
         arr[args.size()] = NULL;
         execvp(arr[0], arr);
+        close(fd);
     }
     //parent process
     else {
         wait(NULL);
     }
-    close(0);
 }
 
 void Shell::shell()
 {
+    int count = 0;
     while (true) {
         prompt();
         parse();
+        if (count == 20) {
+            break;
+        }
+        count++;
         for (auto &args : argslist) {
             if (args.size() > 0 && args[0] == "cd") {
                 changeCurrentPath(args);
-            } else if (args[args.size() - 1] == 'f') {
+            } else if (args[args.size() - 1] == "f") {
                 executeWithIO(args);
             } else {
                 execute(args);
