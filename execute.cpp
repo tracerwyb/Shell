@@ -3,9 +3,23 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-Execute::Execute() {}
+Execute::Execute()
+    : m_rd{new Redirect()}
+{}
 
-void Execute::execute(char *argv[])
+void Execute::execute(std::vector<char **> args, Splitline *sl)
+{
+    if (!sl->ispipe()) {
+        for (auto i : args)
+            if (i != NULL)
+                execute_one(i);
+    } else {
+        sl->reset_ispipe();
+        m_rd->redio_by_pipe(args);
+    }
+}
+
+void Execute::execute_one(char *argv[])
 {
     int pid;
     int child_info = -1;

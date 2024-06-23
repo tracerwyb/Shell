@@ -1,26 +1,61 @@
 #include "splitline.h"
+#include "redirect.h"
 #include <string.h>
 
 #define is_delim(x) ((x) == ' ' || (x) == '\t')
 
 Splitline::Splitline() {}
-Splitline::Splitline(char* sline)
-    : m_line{sline}
-{}
 
-void Splitline::setline(char* line)
+void Splitline::add_cmd(char* line)
 {
-    m_line = line;
+    char* line_tmp = (char*) emalloc(sizeof(line));
+    strcpy(line_tmp, line);
+    m_lines.push_back(line_tmp);
 }
 
-char** Splitline::splitline()
+bool Splitline::isnextline()
 {
-    if (m_line != NULL) {
+    return m_isnextline;
+}
+
+void Splitline::reset_isnextline()
+{
+    m_isnextline = true;
+}
+
+bool Splitline::ispipe()
+{
+    return m_ispipe;
+}
+
+void Splitline::reset_ispipe()
+{
+    m_ispipe = false;
+}
+
+void Splitline::reset_mlines()
+{
+    std::vector<char*>().swap(m_lines);
+}
+
+std::vector<char**> Splitline::split()
+{
+    std::vector<char**> args;
+    for (auto line : m_lines) {
+        args.push_back(splitline(line));
+        // std::cout << "line" << line << '\n';
+    }
+    return args;
+}
+
+char** Splitline::splitline(char* line)
+{
+    if (line != NULL) {
         int spots = 0;         // 最大参数个数
         int argnum = 0;        // 实际参数个数
         int bufspace = BUFSIZ; //初始缓冲区大小
         char** args;           // 参数数组
-        char* cp = m_line;
+        char* cp = line;
         char* start;
         int len;
 
@@ -53,6 +88,8 @@ char** Splitline::splitline()
 
 char* Splitline::next_cmd(char* prompt, FILE* fp)
 {
+    m_isnextline = false;
+
     char* buf;
     int bufspace = 0;
     int pos = 0;
@@ -70,7 +107,20 @@ char* Splitline::next_cmd(char* prompt, FILE* fp)
             }
             bufspace += BUFSIZ;
         }
-        if (c == '\n') {
+        if (c == '\n' || c == ';' || c == '|') {
+            // Redirect rd;
+            if (c == '\n') {
+                reset_isnextline();
+                // reset_ispipe();
+            }
+            if (c == '|') {
+                m_ispipe = true;
+                // rd.redio_by_pipe();
+            }
+            if (c == ';') {
+                // rd.reset_io();
+            }
+
             break;
         }
 

@@ -11,11 +11,13 @@ int main()
     Execute ec;
     Splitline sl;
     while ((cmdline = sl.next_cmd(prompt, stdin)) != NULL) {
-        sl.setline(cmdline);
-        if ((arglist = sl.splitline()) != NULL) {
-            ec.execute(arglist);
+        sl.add_cmd(cmdline);
+        if (sl.isnextline()) {
+            ec.execute(sl.split(), &sl);
+            sl.reset_mlines();
         }
         free(cmdline);
     }
+    std::cout << "quit while\n";
     return 0;
 }
